@@ -1,0 +1,10 @@
+[Unit]
+Description=DS18B20 Temperature Sensors
+
+[Service]
+User=root
+Restart=always
+ExecStart=/usr/local/bin/ds18b20-service.sh
+
+[Install]
+WantedBy=multi-user.target
