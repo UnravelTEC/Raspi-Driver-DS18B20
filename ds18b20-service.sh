@@ -36,7 +36,7 @@ while true; do
     if [ "$(echo $value|head -1|tail -c 4)" = "YES" ]; then
       temp="$(echo $value|tail -1|cut -d"=" -f 2).0" #.0 for switching zsh arithmethics to float
       temp=$((temp/1000))
-      buffercontent="$buffercontent$(printf "temperature_degC{sensor=\"ds18b20\",id=\"%s\"} %g" $i $temp)\n"  #printf because zsh evaluates often to eg 27.437000000000001
+      buffercontent="$buffercontent$(printf "temperature_degC{sensor=\"DS18B20\",id=\"%s\"} %g" $i $temp)\n"  #printf because zsh evaluates often to eg 27.437000000000001
     fi
     let i=i+1
   done
