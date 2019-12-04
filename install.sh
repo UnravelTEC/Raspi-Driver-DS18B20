@@ -23,14 +23,10 @@ targetdir=/usr/local/bin/
 
 mkdir -p $targetdir 
 
-exe1=BME280
-exe2=BME280-0x77
-exe3=bme280-service.sh
-serv1=bme280.service
+exe1=ds18b20-service.sh
+serv1=ds18b20.service
 
 rsync -raxc --info=name $exe1 $targetdir
-rsync -raxc --info=name $exe2 $targetdir
-rsync -raxc --info=name $exe3 $targetdir
 
 rsync -raxc --info=name $serv1 /etc/systemd/system/
 
