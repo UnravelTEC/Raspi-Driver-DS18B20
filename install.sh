@@ -30,5 +30,6 @@ rsync -raxc --info=name $exe1 $targetdir
 
 rsync -raxc --info=name $serv1 /etc/systemd/system/
 
+systemctl daemon-reload
 systemctl enable $serv1 && echo "systemctl enable $serv1 OK"
 systemctl restart $serv1 && echo "systemctl restart $serv1 OK"
