@@ -4,7 +4,11 @@ Description=DS18B20 Temperature Sensors
 [Service]
 User=root
 Restart=always
-ExecStart=/usr/local/bin/ds18b20-service.sh
+Environment=PYTHONUNBUFFERED=true
+StartLimitInterval=60
+StartLimitBurst=3
+WatchdogSec=30
+ExecStart=/usr/local/bin/ds18b20.py
 
 [Install]
 WantedBy=multi-user.target

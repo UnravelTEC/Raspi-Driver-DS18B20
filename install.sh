@@ -20,10 +20,22 @@
 # If you want to relicense this code under another license, please contact info+github@unraveltec.com.
 
 targetdir=/usr/local/bin/
+if [ ! "$1" ]; then
+  last_update=$(stat -c %Y /var/cache/apt/pkgcache.bin)
+  now=$(date +%s)
+  if [ $((now - last_update)) -gt 86400 ]; then
+    echo "long time no aptitude update, doing..."
+    aptitude update
+  fi
+  # python3-paho-mqtt buster only
+  aptitude install -y \
+    mosquitto python3-paho-mqtt \
+    python3-yaml \
+    python3-sdnotify # using systemd watchdog
+  mkdir -p $targetdir
+fi
 
-mkdir -p $targetdir 
-
-exe1=ds18b20-service.sh
+exe1=ds18b20.py
 serv1=ds18b20.service
 
 rsync -raxc --info=name $exe1 $targetdir
