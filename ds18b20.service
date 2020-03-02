@@ -1,5 +1,7 @@
 [Unit]
 Description=DS18B20 Temperature Sensors
+After=mosquitto.service
+Requires=mosquitto.service
 
 [Service]
 User=root
