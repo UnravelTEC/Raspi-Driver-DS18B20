@@ -56,6 +56,7 @@ def eprint(*args, **kwargs):
 name = "DS18B20" # Uppercase
 cfg = {
   "interval": 1,
+  "gpio": 23,
   "brokerhost": "localhost",
   "configfile": "/etc/lcars/" + name.lower() + ".yml"
 }
@@ -65,6 +66,10 @@ parser.add_argument("-i", "--interval", type=float, default=cfg['interval'],
                             help="measurement interval in s (float, default "+str(cfg['interval'])+")", metavar="x")
 parser.add_argument("-D", "--debug", action='store_true', #cmdline arg only, not in config
                             help="print debug messages")
+
+# for sensors/actuators on GPIOs
+parser.add_argument("-g", "--gpio", type=int, default=23,
+                            help="use gpio number {23} (BCM) for powering 1-w with 3v3; set 0 to disable", metavar="ii")
 
 # if using MQTT
 parser.add_argument("-o", "--brokerhost", type=str, default=cfg['brokerhost'],
@@ -117,6 +122,14 @@ for param in required_params:
 print("config used:", cfg)
 print('after cfg', time.time() - starttime)
 n.notify("WATCHDOG=1")
+
+if "gpio" in cfg and cfg['gpio'] > 0 :
+  print("using gpio", cfg['gpio'], "for powering sensor")
+  import RPi.GPIO as IO
+  IO.setmode (IO.BCM)
+  IO.setwarnings(False)
+  IO.setup(cfg['gpio'], IO.OUT)
+  IO.output(cfg['gpio'], True)
 
 SENSOR_NAME = name.lower()
 
@@ -232,9 +245,13 @@ while True:
           # line 2
           splitcontent = content.split("=")
           if len(splitcontent) == 2:
-            temperature = round(float(splitcontent[1])/1000, 3)
-            # print(temperature)
             jsontags['id'] = "1w-" + sensorfolder
+            temperature = round(float(splitcontent[1])/1000, 3)
+            if temperature == 85.0: # error condition
+              eprint("DS18B20 readout error for", sensorfolder)
+              continue
+
+            # print(temperature)
             payload = {
               "tags": jsontags,
               "values": {
