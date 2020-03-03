@@ -270,7 +270,7 @@ while True:
 
 
   to_wait = MEAS_INTERVAL - run_duration
-  if to_wait > 0:
+  if to_wait > 0.002:
     DEBUG and print("wait for {0:4f}s".format(to_wait))
     time.sleep(to_wait - 0.002)
   else:
