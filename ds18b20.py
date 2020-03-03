@@ -231,9 +231,14 @@ print('starting loop', time.time() - starttime)
 while True:
   run_started_at = time.time()
 
+  foundsensor = False
+  DEBUG and print('opening', sysbus, ":", os.listdir(sysbus))
   for sensorfolder in os.listdir(sysbus):
     if sensorfolder.startswith(onewclass):
+      DEBUG and print('opening', sysbus + sensorfolder +'/w1_slave')
       with open(''.join([sysbus, sensorfolder, "/w1_slave"])) as lines:
+        foundsensor = True
+        DEBUG and print('opened', sysbus + sensorfolder +'/w1_slave')
         is_ok = False
         for line in lines:
           content = line.strip()
@@ -260,6 +265,11 @@ while True:
               "UTS": round(run_started_at, 3)
               }
             mqttJsonPub(topic_json, payload)
+
+  if not foundsensor:
+    eprint('no DS18B20 sensors found in', sysbus, ":", os.listdir(sysbus))
+    exit_gracefully()
+
 
   first_run = False
 
