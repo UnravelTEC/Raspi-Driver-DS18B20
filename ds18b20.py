@@ -225,6 +225,18 @@ MEAS_INTERVAL = cfg['interval']
 sysbus="/sys/bus/w1/devices/"
 onewclass="28"
 
+def reset():
+  if not 'gpio' in cfg:
+    eprint("gpio powering deactivated, cannot reset")
+    exit_gracefully()
+  IO.output(cfg['gpio'], False)
+  print("reset in progress - ", end='')
+  for i in range(5):
+    print(5-i, end=' ')
+    time.sleep(1)
+  IO.output(cfg['gpio'], True)
+  print("\nreset procedure completed.")
+
 n.notify("READY=1") #optional after initializing
 n.notify("WATCHDOG=1")
 print('starting loop', time.time() - starttime)
@@ -234,6 +246,7 @@ while True:
   foundsensor = False
   DEBUG and print('opening', sysbus, ":", os.listdir(sysbus))
   for sensorfolder in os.listdir(sysbus):
+    error_count = 0
     if sensorfolder.startswith(onewclass):
       DEBUG and print('opening', sysbus + sensorfolder +'/w1_slave')
       with open(''.join([sysbus, sensorfolder, "/w1_slave"])) as lines:
@@ -254,6 +267,9 @@ while True:
             temperature = round(float(splitcontent[1])/1000, 3)
             if temperature == 85.0: # error condition
               eprint("DS18B20 readout error for", sensorfolder)
+              error_count += 1
+              if  error_count > 4:
+                reset()
               continue
 
             # print(temperature)
@@ -271,7 +287,9 @@ while True:
       eprint('no DS18B20 sensors found on initial start', sysbus, ":", os.listdir(sysbus))
     else:
       eprint('all DS18B20 sensors vanished', sysbus, ":", os.listdir(sysbus))
-    exit_gracefully()
+    eprint("try reset")
+    reset()
+    # exit_gracefully()
 
 
   first_run = False
