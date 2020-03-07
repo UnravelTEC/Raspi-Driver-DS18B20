@@ -267,7 +267,10 @@ while True:
             mqttJsonPub(topic_json, payload)
 
   if not foundsensor:
-    eprint('no DS18B20 sensors found in', sysbus, ":", os.listdir(sysbus))
+    if first_run:
+      eprint('no DS18B20 sensors found on initial start', sysbus, ":", os.listdir(sysbus))
+    else:
+      eprint('all DS18B20 sensors vanished', sysbus, ":", os.listdir(sysbus))
     exit_gracefully()
 
 
