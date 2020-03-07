@@ -31,6 +31,7 @@ if [ ! "$1" ]; then
   aptitude install -y \
     mosquitto python3-paho-mqtt \
     python3-yaml \
+    python3-rpi.gpio \
     python3-sdnotify # using systemd watchdog
   mkdir -p $targetdir
 fi
