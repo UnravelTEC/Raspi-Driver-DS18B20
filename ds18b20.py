@@ -235,7 +235,19 @@ def reset():
     print(5-i, end=' ')
     time.sleep(1)
   IO.output(cfg['gpio'], True)
-  print("\nreset procedure completed.")
+  print('\nwaiting for sensor ', end='')
+  for i in range(10):
+    for sensorfolder in os.listdir(sysbus):
+      if sensorfolder.startswith(onewclass):
+        print('\nsensor there, opening', sysbus + sensorfolder +'/w1_slave')
+        with open(''.join([sysbus, sensorfolder, "/w1_slave"])) as lines:
+          print("\nreset procedure completed.")
+          return
+    print('.', end=' ')
+    time.sleep(1)
+  print('\nreset unsuccessful')
+  exit_gracefully()
+
 
 n.notify("READY=1") #optional after initializing
 n.notify("WATCHDOG=1")
