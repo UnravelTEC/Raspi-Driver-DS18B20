@@ -56,7 +56,7 @@ def eprint(*args, **kwargs):
 name = "DS18B20" # Uppercase
 cfg = {
   "interval": 1,
-  "gpio": 23,
+  "gpio": -1,
   "brokerhost": "localhost",
   "configfile": "/etc/lcars/" + name.lower() + ".yml"
 }
@@ -68,8 +68,8 @@ parser.add_argument("-D", "--debug", action='store_true', #cmdline arg only, not
                             help="print debug messages")
 
 # for sensors/actuators on GPIOs
-parser.add_argument("-g", "--gpio", type=int, default=23,
-                            help="use gpio number {23} (BCM) for powering 1-w with 3v3; set 0 to disable", metavar="ii")
+parser.add_argument("-g", "--gpio", type=int, default=cfg['gpio'],
+                            help="use gpio number {"+cfg['gpio']+"} (BCM) for powering 1-w with 3v3; set -1 to disable", metavar="ii")
 
 # if using MQTT
 parser.add_argument("-o", "--brokerhost", type=str, default=cfg['brokerhost'],
@@ -123,7 +123,7 @@ print("config used:", cfg)
 print('after cfg', time.time() - starttime)
 n.notify("WATCHDOG=1")
 
-if "gpio" in cfg and cfg['gpio'] > 0 :
+if "gpio" in cfg and cfg['gpio'] >= 0 :
   print("using gpio", cfg['gpio'], "for powering sensor")
   import RPi.GPIO as IO
   IO.setmode (IO.BCM)
