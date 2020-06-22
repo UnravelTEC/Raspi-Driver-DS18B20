@@ -16,7 +16,7 @@ Note: Standard pin is 4 - argument may be omitted then.
 
 ### Wiring DS18B20 to Raspberry Pi
 - DS18B20: VIN -> Pi: 3.3V
-- DS18B20: Singal -> Pi: pin 4 (or else) - and add a pullup Resistor (e.g. 10K) between this pin and 3v3, or else it wont work!
+- DS18B20: Signal -> Pi: pin 4 (or else) - and add a pullup resistor (e.g. 10K) between this pin and 3v3, or else it wont work!
 - DS18B20: GND -> Pi: GND (use one of GND pinouts)
 
 

@@ -25,7 +25,7 @@ n.notify("WATCHDOG=1")
 
 import time
 starttime = time.time()
-print('startet at', starttime)
+print('started at', starttime)
 import json
 import sys
 import os, signal
@@ -226,7 +226,7 @@ sysbus="/sys/bus/w1/devices/"
 onewclass="28"
 
 def reset():
-  if not 'gpio' in cfg:
+  if not 'gpio' in cfg or cfg['gpio'] == False:
     eprint("gpio powering deactivated, cannot reset")
     exit_gracefully()
   IO.output(cfg['gpio'], False)
