@@ -69,7 +69,7 @@ parser.add_argument("-D", "--debug", action='store_true', #cmdline arg only, not
 
 # for sensors/actuators on GPIOs
 parser.add_argument("-g", "--gpio", type=int, default=cfg['gpio'],
-                            help="use gpio number {"+cfg['gpio']+"} (BCM) for powering 1-w with 3v3; set -1 to disable", metavar="ii")
+                            help="use gpio number {"+str(cfg['gpio'])+"} (BCM) for powering 1-w with 3v3; set -1 to disable", metavar="ii")
 
 # if using MQTT
 parser.add_argument("-o", "--brokerhost", type=str, default=cfg['brokerhost'],
@@ -226,7 +226,7 @@ sysbus="/sys/bus/w1/devices/"
 onewclass="28"
 
 def reset():
-  if not 'gpio' in cfg or cfg['gpio'] == False:
+  if not 'gpio' in cfg or cfg['gpio'] == -1:
     eprint("gpio powering deactivated, cannot reset")
     exit_gracefully()
   IO.output(cfg['gpio'], False)
