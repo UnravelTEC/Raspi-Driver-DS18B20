@@ -15,8 +15,8 @@ add `dtoverlay=w1-gpio,gpiopin=4` to `/boot/config.txt`
 Note: Standard pin is 4 - argument may be omitted then.
 
 ### Wiring DS18B20 to Raspberry Pi
-- DS18B20: VIN -> Pi: 3.3V
 - DS18B20: Signal -> Pi: pin 4 (or else) - and add a pullup resistor (e.g. 10K) between this pin and 3v3, or else it wont work!
+- DS18B20: VIN -> Pi: 3.3V (or any other gpio configured output,HIGH)
 - DS18B20: GND -> Pi: GND (use one of GND pinouts)
 
 
@@ -26,4 +26,4 @@ Note: Standard pin is 4 - argument may be omitted then.
 ./install.sh
 ```
 
-the service writes a file `/run/sensors/ds18b20/last` and updates it every second (which resides in RAM) - it is meant to be read out by prometheus.
+the service publishes sensor data to local mqtt broker under the topic $hostname/sensors/DS18B20/temperature
