@@ -26,4 +26,6 @@ Note: Standard pin is 4 - argument may be omitted then.
 ./install.sh
 ```
 
-the service publishes sensor data to local mqtt broker under the topic $hostname/sensors/DS18B20/temperature
+Two different drivers:
+- the (newer) python service publishes sensor data to local mqtt broker under the topic $hostname/sensors/DS18B20/temperature
+- the (older) shellscript service writes a file `/run/sensors/ds18b20/last` and updates it every second (which resides in RAM) - it is meant to be read out by prometheus.
