@@ -58,6 +58,7 @@ cfg = {
   "interval": 1,
   "gpio": -1,
   "brokerhost": "localhost",
+  "prometheus": False,
   "configfile": "/etc/lcars/" + name.lower() + ".yml"
 }
 
@@ -74,6 +75,9 @@ parser.add_argument("-g", "--gpio", type=int, default=cfg['gpio'],
 # if using MQTT
 parser.add_argument("-o", "--brokerhost", type=str, default=cfg['brokerhost'],
                             help="use mqtt broker (addr: {"+cfg['brokerhost']+"})", metavar="addr")
+
+parser.add_argument("-p", "--prometheus", dest="prometheus", action='store_true',
+                        help="enable output to prometheus scrapefile")
 
 # if using configfiles
 parser.add_argument("-c", "--configfile", type=str, default=cfg['configfile'],
@@ -222,6 +226,11 @@ first_run = True
 
 MEAS_INTERVAL = cfg['interval']
 
+if(cfg['prometheus']):
+  LOGFOLDER = '/run/sensors/ds18b20'
+  LOGFILE = LOGFOLDER+'/last'
+  call(["mkdir", "-p", LOGFOLDER])
+
 sysbus="/sys/bus/w1/devices/"
 onewclass="28"
 
@@ -293,6 +302,11 @@ while True:
               "UTS": round(run_started_at, 3)
               }
             mqttJsonPub(topic_json, payload)
+            if(cfg['prometheus']):
+              logfilehandle = open(LOGFILE, "w",1)
+              prometh_string = 'temperature_degC{sensor="DS18B20",id="1w-' + sensorfolder + '"} ' + str(temperature) + '\n'
+              logfilehandle.write(prometh_string)
+              logfilehandle.close()
 
   if not foundsensor:
     if first_run:
