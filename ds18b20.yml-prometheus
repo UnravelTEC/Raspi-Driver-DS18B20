@@ -1,0 +1,2 @@
+gpio: 23
+prometheus: True
