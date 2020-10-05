@@ -2,14 +2,14 @@
 Description=DS18B20 Temperature Sensors
 After=mosquitto.service
 Requires=mosquitto.service
+StartLimitIntervalSec=0
 
 [Service]
 User=root
 Restart=always
 Environment=PYTHONUNBUFFERED=true
-StartLimitInterval=60
-StartLimitBurst=3
 WatchdogSec=30
+RestartSec=5
 ExecStart=/usr/local/bin/ds18b20.py
 
 [Install]
