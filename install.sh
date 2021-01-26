@@ -36,12 +36,36 @@ if [ ! "$1" ]; then
   mkdir -p $targetdir
 fi
 
+if [ -f /boot/config.txt ]; then
+  if ! egrep -q '^\s*dtoverlay=w1-gpio,gpiopin=24' /boot/config.txt; then
+    sed -e 's|^#\s*dtoverlay=w1-gpio,gpiopin=24|dtoverlay=w1-gpio,gpiopin=24|' -i /boot/config.txt
+    echo 'uncommented and enabled 1-w to config.txt'
+  fi
+  if ! egrep -q '^\s*dtoverlay=w1-gpio,gpiopin=24' /boot/config.txt; then
+    echo 'dtoverlay=w1-gpio,gpiopin=24' >> /boot/config.txt
+    echo 'added and enabled 1-w to config.txt'
+  fi
+  if ! egrep -q '^\s*gpio=23=op,dh' /boot/config.txt; then
+    sed -e 's|^#\s*gpio=23=op,dh|gpio=23=op,dh|' -i /boot/config.txt
+    echo 'uncommented and enabled 1-w powering to config.txt'
+  fi
+  if ! egrep -q '^\s*gpio=23=op,dh' /boot/config.txt; then
+    echo 'gpio=23=op,dh' >> /boot/config.txt
+    echo 'added and enabled 1-w powering to config.txt'
+  fi
+else
+  echo "/boot/config.txt not found, you have to make sure uart is enabled yourself"
+fi
+
+
 exe1=ds18b20.py
 serv1=ds18b20.service
 
 rsync -raxc --info=name $exe1 $targetdir
 
 rsync -raxc --info=name $serv1 /etc/systemd/system/
+
+rsync --ignore-existing -xc --info=name "ds18b20.yml-pmlogger" /etc/lcars/ds18b20.yml
 
 systemctl daemon-reload
 systemctl enable $serv1 && echo "systemctl enable $serv1 OK"
