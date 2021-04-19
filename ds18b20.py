@@ -286,7 +286,7 @@ while True:
           if len(splitcontent) == 2:
             jsontags['id'] = "1w-" + sensorfolder
             temperature = round(float(splitcontent[1])/1000, 3)
-            if temperature == 85.0: # error condition
+            if temperature == 85.0 or temperature < -40: # error condition
               eprint("DS18B20 readout error for", sensorfolder)
               error_count += 1
               if  error_count > 4:
