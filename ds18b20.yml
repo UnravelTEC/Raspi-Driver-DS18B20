@@ -1,0 +1,18 @@
+"GPIO": 0
+
+sensors:
+  "1w-28-00a9a5000003":
+    tags:
+      "type": "sensor_temp"
+      "sensor": "NO2-B43F"
+    fieldname: "sensor_degC"
+  "1w-28-06473b4c8400":
+    tags:
+      "type": "case_temp"
+      "position": "inside_isolation"
+    fieldname: "case_degC"
+  "1w-28-0301a27954fe"
+    tags:
+      "type": "case_temp"
+      "position": "outside_isolation"
+    fieldname: "case_degC"
