@@ -141,6 +141,10 @@ hostname = os.uname()[1]
 
 brokerhost = cfg['brokerhost']
 
+customsensors = None
+if cfg['sensors']:
+  customsensors = cfg['sensors']
+
 def mqttConnect():
   while True:
     try:
@@ -296,7 +300,8 @@ while True:
             # line 2
             splitcontent = content.split("=")
             if len(splitcontent) == 2:
-              jsontags['id'] = "1w-" + sensorfolder
+              stags = jsontags.copy()
+              stags['id'] = "1w-" + sensorfolder
               temperature = round(float(splitcontent[1])/1000, 3)
               if temperature == 85.0 or temperature < -40: # error condition
                 eprint("DS18B20 readout error for", sensorfolder)
@@ -306,10 +311,19 @@ while True:
                 continue
 
               # print(temperature)
+              datafield = "air_degC"
+              if customsensors and sensorfolder in customsensors:
+                csenscfg = customsensors[sensorfolder]
+                if "tags" in csenscfg:
+                  for key in csenscfg["tags"]:
+                    stags[key] = csenscfg["tags"][key]
+                if "fieldname" in csenscfg:
+                  datafield = csenscfg["fieldname"]
+
               payload = {
-                "tags": jsontags,
+                "tags": stags,
                 "values": {
-                  "air_degC": temperature
+                  datafield: temperature
                   },
                 "UTS": round(run_started_at, 3)
                 }
