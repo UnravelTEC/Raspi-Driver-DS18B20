@@ -257,7 +257,6 @@ def reset():
   print('\nreset unsuccessful')
   exit_gracefully()
 
-
 n.notify("READY=1") #optional after initializing
 n.notify("WATCHDOG=1")
 print('starting loop', time.time() - starttime)
@@ -270,43 +269,46 @@ while True:
     error_count = 0
     if sensorfolder.startswith(onewclass):
       DEBUG and print('opening', sysbus + sensorfolder +'/w1_slave')
-      with open(''.join([sysbus, sensorfolder, "/w1_slave"])) as lines:
-        foundsensor = True
-        DEBUG and print('opened', sysbus + sensorfolder +'/w1_slave')
-        is_ok = False
-        for line in lines:
-          content = line.strip()
-          if not is_ok: # not yet in line 2
-            if content.endswith("YES"):
-              DEBUG and print(sensorfolder, "OK")
-              is_ok = True
-            continue
-          # line 2
-          splitcontent = content.split("=")
-          if len(splitcontent) == 2:
-            jsontags['id'] = "1w-" + sensorfolder
-            temperature = round(float(splitcontent[1])/1000, 3)
-            if temperature == 85.0 or temperature < -40: # error condition
-              eprint("DS18B20 readout error for", sensorfolder)
-              error_count += 1
-              if  error_count > 4:
-                reset()
+      try:
+        with open(''.join([sysbus, sensorfolder, "/w1_slave"])) as lines:
+          foundsensor = True
+          DEBUG and print('opened', sysbus + sensorfolder +'/w1_slave')
+          is_ok = False
+          for line in lines:
+            content = line.strip()
+            if not is_ok: # not yet in line 2
+              if content.endswith("YES"):
+                DEBUG and print(sensorfolder, "OK")
+                is_ok = True
               continue
+            # line 2
+            splitcontent = content.split("=")
+            if len(splitcontent) == 2:
+              jsontags['id'] = "1w-" + sensorfolder
+              temperature = round(float(splitcontent[1])/1000, 3)
+              if temperature == 85.0 or temperature < -40: # error condition
+                eprint("DS18B20 readout error for", sensorfolder)
+                error_count += 1
+                if  error_count > 4:
+                  reset()
+                continue
 
-            # print(temperature)
-            payload = {
-              "tags": jsontags,
-              "values": {
-                "air_degC": temperature
-                },
-              "UTS": round(run_started_at, 3)
-              }
-            mqttJsonPub(topic_json, payload)
-            if(cfg['prometheus']):
-              logfilehandle = open(LOGFILE, "w",1)
-              prometh_string = 'temperature_degC{sensor="DS18B20",id="1w-' + sensorfolder + '"} ' + str(temperature) + '\n'
-              logfilehandle.write(prometh_string)
-              logfilehandle.close()
+              # print(temperature)
+              payload = {
+                "tags": jsontags,
+                "values": {
+                  "air_degC": temperature
+                  },
+                "UTS": round(run_started_at, 3)
+                }
+              mqttJsonPub(topic_json, payload)
+              if(cfg['prometheus']):
+                logfilehandle = open(LOGFILE, "w",1)
+                prometh_string = 'temperature_degC{sensor="DS18B20",id="1w-' + sensorfolder + '"} ' + str(temperature) + '\n'
+                logfilehandle.write(prometh_string)
+                logfilehandle.close()
+      except Exception as e:
+        print(''.join([sysbus, sensorfolder, "/w1_slave"], " vanished, continue"))
 
   if not foundsensor:
     if first_run:
