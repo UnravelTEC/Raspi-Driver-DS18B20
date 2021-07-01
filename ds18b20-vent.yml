@@ -1,0 +1,14 @@
+GPIO: 23
+
+sensors:
+  28-0301a279e931:
+    tags:
+      "type": "air_temp"
+      "position": "inside"
+    fieldname: "air_degC"
+  28-3c01d075a590:
+    tags:
+      "type": "air_temp"
+      "position": "outside"
+      "ventilated": "yes"
+    fieldname: "air_degC"
