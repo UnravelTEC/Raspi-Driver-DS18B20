@@ -253,9 +253,12 @@ def reset():
     for sensorfolder in os.listdir(sysbus):
       if sensorfolder.startswith(onewclass):
         print('\nsensor there, opening', sysbus + sensorfolder +'/w1_slave')
-        with open(''.join([sysbus, sensorfolder, "/w1_slave"])) as lines:
-          print("\nreset procedure completed.")
-          return
+        try:
+          with open(''.join([sysbus, sensorfolder, "/w1_slave"])) as lines:
+            print("\nreset procedure completed.")
+            return
+        except Exception as e:
+          print(''.join([sysbus, sensorfolder, "/w1_slave"], " vanished, continue"))
     print('.', end=' ')
     time.sleep(1)
   print('\nreset unsuccessful')
