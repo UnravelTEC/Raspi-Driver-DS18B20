@@ -257,6 +257,9 @@ def reset():
   print('\nreset unsuccessful')
   exit_gracefully()
 
+sensorlist = {}
+# sensorlist = { "sensorid" : "checked|to_check", ... }
+
 n.notify("READY=1") #optional after initializing
 n.notify("WATCHDOG=1")
 print('starting loop', time.time() - starttime)
@@ -264,6 +267,9 @@ while True:
   run_started_at = time.time()
 
   foundsensor = False
+  for sensorid in sensorlist:
+    sensorlist[sensorid] = "to_check"
+
   DEBUG and print('opening', sysbus, ":", os.listdir(sysbus))
   for sensorfolder in os.listdir(sysbus):
     error_count = 0
@@ -271,8 +277,14 @@ while True:
       DEBUG and print('opening', sysbus + sensorfolder +'/w1_slave')
       try:
         with open(''.join([sysbus, sensorfolder, "/w1_slave"])) as lines:
-          foundsensor = True
           DEBUG and print('opened', sysbus + sensorfolder +'/w1_slave')
+
+          foundsensor = True
+          if sensorfolder in sensorlist:
+            sensorlist[sensorfolder] = "checked"
+          else:
+            sensorlist[sensorfolder] = "new"
+
           is_ok = False
           for line in lines:
             content = line.strip()
@@ -309,6 +321,16 @@ while True:
                 logfilehandle.close()
       except Exception as e:
         print(''.join([sysbus, sensorfolder, "/w1_slave"], " vanished, continue"))
+
+  for sensorid in sensorlist:
+    if sensorlist[sensorid] == "checked":
+      continue
+    if sensorlist[sensorid] == "new":
+      print("New Sensor with id", sensorid, "found")
+    if sensorlist[sensorid] == "to_check":
+      print("Sensor with id", sensorid, "vanished")
+      del sensorlist[sensorid]
+
 
   if not foundsensor:
     if first_run:
