@@ -1,4 +1,4 @@
-GPIO: 23
+gpio: 23
 
 sensors:
   28-0301a279e931:
