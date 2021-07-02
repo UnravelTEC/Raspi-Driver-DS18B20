@@ -337,7 +337,7 @@ while True:
                 logfilehandle.write(prometh_string)
                 logfilehandle.close()
       except Exception as e:
-        print(''.join([sysbus, sensorfolder, "/w1_slave"], " vanished, continue"))
+        print(''.join([sysbus, sensorfolder, "/w1_slave vanished, continue"]))
 
   for sensorid in sensorlist:
     if sensorlist[sensorid] == "checked":
@@ -346,7 +346,10 @@ while True:
       print("New Sensor with id", sensorid, "found")
     if sensorlist[sensorid] == "to_check":
       print("Sensor with id", sensorid, "vanished")
-      del sensorlist[sensorid]
+      sensorlist[sensorid] = "to_delete"
+
+  delete = [key for key in sensorlist if sensorlist[key] == "to_delete"]
+  for key in delete: del sensorlist[key]
 
 
   if not foundsensor:
