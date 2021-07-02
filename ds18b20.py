@@ -343,7 +343,7 @@ while True:
     if sensorlist[sensorid] == "checked":
       continue
     if sensorlist[sensorid] == "new":
-      print("New Sensor with id", sensorid, "found")
+      print("New Sensor ", sysbus + sensorid + "/w1_slave found")
     if sensorlist[sensorid] == "to_check":
       print("Sensor with id", sensorid, "vanished")
       sensorlist[sensorid] = "to_delete"
