@@ -1,0 +1,20 @@
+gpio: 17
+
+sensors:
+  28-00a9a5000003:
+    tags:
+      "type": "sensor_temp"
+      "target_sensor": "NO2-B43F"
+    fieldname: "sensor_degC"
+  28-06473b4c8400:
+    tags:
+      "type": "case_temp"
+      "position": "inside_isolation"
+    fieldname: "case_degC"
+  28-0301a27954fe:
+    tags:
+      "type": "case_temp"
+      "position": "outside_isolation"
+    fieldname: "case_degC"
+  28-3c01e0769daf:
+    fieldname: "test_degC"
