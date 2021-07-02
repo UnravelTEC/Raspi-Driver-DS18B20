@@ -293,51 +293,60 @@ while True:
             sensorlist[sensorfolder] = "new"
 
           is_ok = False
+          temperature = -4747
           for line in lines:
             content = line.strip()
-            if not is_ok: # not yet in line 2
-              if content.endswith("YES"):
-                DEBUG and print(sensorfolder, "OK")
-                is_ok = True
-              continue
-            # line 2
-            splitcontent = content.split("=")
-            if len(splitcontent) == 2:
-              stags = jsontags.copy()
-              stags['id'] = "1w-" + sensorfolder
-              temperature = round(float(splitcontent[1])/1000, 3)
-              if temperature == 85.0 or temperature < -40: # error condition
-                eprint("DS18B20 readout error for", sensorfolder)
-                error_count += 1
-                if  error_count > 4:
-                  reset()
-                continue
+            if is_ok: # reached line2 successful
+              # line 2
+              splitcontent = content.split("=")
+              if len(splitcontent) == 2:
+                stags = jsontags.copy()
+                stags['id'] = "1w-" + sensorfolder
+                temperature = round(float(splitcontent[1])/1000, 3)
+                break
+            if content.endswith("YES"): # still at line 1
+              DEBUG and print(sensorfolder, "OK")
+              is_ok = True
 
-              # print(temperature)
-              datafield = "air_degC"
-              if customsensors and sensorfolder in customsensors:
-                csenscfg = customsensors[sensorfolder]
-                if "tags" in csenscfg:
-                  for key in csenscfg["tags"]:
-                    stags[key] = csenscfg["tags"][key]
-                if "fieldname" in csenscfg:
-                  datafield = csenscfg["fieldname"]
+          if temperature == -4747: # checksum NOK or other error
+            eprint("DS18B20 readout error for", sensorfolder, "content:", *lines)
+            time.sleep(1)
+            continue
 
-              payload = {
-                "tags": stags,
-                "values": {
-                  datafield: temperature
-                  },
-                "UTS": round(run_started_at, 3)
-                }
-              mqttJsonPub(topic_json, payload)
-              if(cfg['prometheus']):
-                logfilehandle = open(LOGFILE, "w",1)
-                prometh_string = 'temperature_degC{sensor="DS18B20",id="1w-' + sensorfolder + '"} ' + str(temperature) + '\n'
-                logfilehandle.write(prometh_string)
-                logfilehandle.close()
+          if temperature == 85.0 or temperature < -55 or temperature > 125: # error condition
+            eprint("DS18B20 readout error for", sensorfolder, "t =", temperature)
+            error_count += 1
+            if error_count > 4:
+              reset()
+            continue
+
+          # print(temperature)
+          datafield = "air_degC"
+          if customsensors and sensorfolder in customsensors:
+            csenscfg = customsensors[sensorfolder]
+            if "tags" in csenscfg:
+              for key in csenscfg["tags"]:
+                stags[key] = csenscfg["tags"][key]
+            if "fieldname" in csenscfg:
+              datafield = csenscfg["fieldname"]
+
+          payload = {
+            "tags": stags,
+            "values": {
+              datafield: temperature
+              },
+            "UTS": round(run_started_at, 3)
+            }
+          mqttJsonPub(topic_json, payload)
+          if(cfg['prometheus']):
+            logfilehandle = open(LOGFILE, "w",1)
+            prometh_string = 'temperature_degC{sensor="DS18B20",id="1w-' + sensorfolder + '"} ' + str(temperature) + '\n'
+            logfilehandle.write(prometh_string)
+            logfilehandle.close()
       except Exception as e:
         print(''.join([sysbus, sensorfolder, "/w1_slave vanished, continue"]))
+
+      time.sleep(0.1) # give bus/voltage supply time to settle
 
   for sensorid in sensorlist:
     if sensorlist[sensorid] == "checked":
@@ -351,14 +360,25 @@ while True:
   delete = [key for key in sensorlist if sensorlist[key] == "to_delete"]
   for key in delete: del sensorlist[key]
 
+  if not customsensors: ## FIXME
+    broken = False
+    for csensorid in customsensors:
+      if not csensorid in sensorlist:
+        eprint("sensor", csensorid, "from config missing, reset")
+        reset()
+        broken = True
+        break
+    if broken:
+      continue
 
-  if not foundsensor:
-    if first_run:
-      eprint('no DS18B20 sensors found on initial start', sysbus, ":", os.listdir(sysbus))
-    else:
-      eprint('all DS18B20 sensors vanished', sysbus, ":", os.listdir(sysbus))
-    eprint("try reset")
-    reset()
+
+  # if not foundsensor:
+  #   if first_run:
+  #     eprint('no DS18B20 sensors found on initial start', sysbus, ":", os.listdir(sysbus))
+  # else:
+  #     eprint('all DS18B20 sensors vanished', sysbus, ":", os.listdir(sysbus))
+  #  eprint("try reset")
+    # reset()
     # exit_gracefully()
 
 
