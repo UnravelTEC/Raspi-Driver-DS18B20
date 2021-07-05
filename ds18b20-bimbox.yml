@@ -1,5 +1,3 @@
-gpio: 17
-
 sensors:
   28-00a9a5000003:
     tags:

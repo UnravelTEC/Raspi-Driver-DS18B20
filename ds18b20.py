@@ -70,7 +70,7 @@ parser.add_argument("-D", "--debug", action='store_true', #cmdline arg only, not
 
 # for sensors/actuators on GPIOs
 parser.add_argument("-g", "--gpio", type=int, default=cfg['gpio'],
-                            help="use gpio number {"+str(cfg['gpio'])+"} (BCM) for powering 1-w with 3v3; set -1 to disable", metavar="ii")
+                            help="use gpio number {"+str(cfg['gpio'])+"} (BCM) for 1-w line (used for reset)", metavar="ii")
 
 # if using MQTT
 parser.add_argument("-o", "--brokerhost", type=str, default=cfg['brokerhost'],
@@ -127,13 +127,33 @@ print("config used:", cfg)
 print('after cfg', time.time() - starttime)
 n.notify("WATCHDOG=1")
 
-if "gpio" in cfg and cfg['gpio'] >= 0 :
-  print("using gpio", cfg['gpio'], "for powering sensor")
+gpioline = ""
+with open("/boot/config.txt") as lines:
+  for line in lines:
+    if line.startswith("dtoverlay=w1-gpio"):
+      gpioline = line
+      break
+
+if not gpioline:
+  eprint("w1 not found in /boot/config.txt, is it enabled?")
+
+if "gpio" in cfg and cfg['gpio'] == -1 :
+  splitscomma = gpioline.split(",",1)
+  if len(splitscomma) > 1:
+    kv = splitscomma[1].split("=",1)
+    v = kv[1].split("#",1)
+    cfg['gpio'] = int(v[0].strip())
+    print("using gpio", cfg['gpio'], "from /boot/config.txt")
+  else:
+    cfg['gpio'] = 4
+    print("using gpio", cfg['gpio'], "(default)")
+
+if "gpio" in cfg:
+  print("using gpio", cfg['gpio'], "for sensor")
+
   import RPi.GPIO as IO
   IO.setmode (IO.BCM)
   IO.setwarnings(False)
-  IO.setup(cfg['gpio'], IO.OUT)
-  IO.output(cfg['gpio'], True)
 
 SENSOR_NAME = name.lower()
 
@@ -238,31 +258,82 @@ if(cfg['prometheus']):
 sysbus="/sys/bus/w1/devices/"
 onewclass="28"
 
+searchfile=sysbus + "w1_bus_master1/w1_master_search"
+def disable_search():
+  try:
+    with open(searchfile,'w+') as lines:
+      for line in lines:
+        if line.strip() != "0":
+          print("w1 search active (",line.strip(),") disabling")
+          lines.write("0")
+        else:
+          print("w1 search already disabled, OK")
+  except Exception as e:
+    eprint('error opening', searchfile, ":", e)
+
+disable_search()
+
 def reset():
+  global first_run
+  print("reset called")
+  first_run = True
+  disable_search()
   if not 'gpio' in cfg or cfg['gpio'] == -1:
-    eprint("gpio powering deactivated, cannot reset")
+    eprint("gpio unknown, cannot reset")
     exit_gracefully()
+  for sensorfolder in os.listdir(sysbus):
+    if sensorfolder.startswith(onewclass):
+      print("removing", sensorfolder, "…")
+      try:
+        with open(sysbus + "w1_bus_master1/w1_master_remove",'w') as lines:
+          lines.write(sensorfolder)
+      except Exception as e:
+        eprint('error removing', sensorfolder, ":", e)
+    time.sleep(0.5)
+  for sensorfolder in os.listdir(sysbus):
+    if sensorfolder.startswith(onewclass):
+      eprint("error,", sensorfolder, "still here")
+
+  print("forcing w1-line down")
+  IO.setup(cfg['gpio'], IO.OUT)
   IO.output(cfg['gpio'], False)
-  print("reset in progress - ", end='')
-  for i in range(5):
-    print(5-i, end=' ')
-    time.sleep(1)
+  time.sleep(0.5)
   IO.output(cfg['gpio'], True)
-  print('\nwaiting for sensor ', end='')
-  for i in range(10):
-    for sensorfolder in os.listdir(sysbus):
-      if sensorfolder.startswith(onewclass):
-        print('\nsensor there, opening', sysbus + sensorfolder +'/w1_slave')
-        try:
-          with open(''.join([sysbus, sensorfolder, "/w1_slave"])) as lines:
-            print("\nreset procedure completed.")
-            return
-        except Exception as e:
-          print(''.join([sysbus, sensorfolder, "/w1_slave"], " vanished, continue"))
-    print('.', end=' ')
+  time.sleep(1)
+  print("starting search")
+  with open(searchfile,'w+') as lines:
+    lines.write("1")
+
+  print("search in progress - ", end='')
+  for i in range(12):
+    print(12-i, end=' ')
     time.sleep(1)
-  print('\nreset unsuccessful')
-  exit_gracefully()
+  print('\nwaiting for sensor ', end='')
+
+  found_sensors = []
+  for sensorfolder in os.listdir(sysbus):
+    if sensorfolder.startswith(onewclass):
+      found_sensors.append(sensorfolder)
+
+  if customsensors:
+    extra_sensors = []
+    missing_sensors = []
+    for csensor in customsensors:
+      if csensor not in found_sensors:
+        missing_sensors.append(csensor)
+    for fsensor in found_sensors:
+      if fsensor not in customsensors:
+        extra_sensors.append(fsensor)
+    if missing_sensors:
+      print("These sensors from config not found:", missing_sensors)
+    else:
+      print("All configured sensors found.")
+    if extra_sensors:
+      print("These sensors are there, but not in config", extra_sensors)
+
+  if len(found_sensors) == 0:
+    eprint("no sensors appeared after reset, exit")
+    exit_gracefully()
 
 sensorlist = {}
 # sensorlist = { "sensorid" : "checked|to_check", ... }
@@ -272,6 +343,8 @@ n.notify("WATCHDOG=1")
 print('starting loop', time.time() - starttime)
 while True:
   run_started_at = time.time()
+
+  handled_sensors = 0
 
   foundsensor = False
   for sensorid in sensorlist:
@@ -320,6 +393,8 @@ while True:
               reset()
             continue
 
+          handled_sensors += 1
+
           # print(temperature)
           datafield = "air_degC"
           if customsensors and sensorfolder in customsensors:
@@ -344,15 +419,22 @@ while True:
             logfilehandle.write(prometh_string)
             logfilehandle.close()
       except Exception as e:
-        print(''.join([sysbus, sensorfolder, "/w1_slave vanished, continue"]))
+        print(''.join([sysbus, sensorfolder, " vanished, continue"]))
 
       time.sleep(0.1) # give bus/voltage supply time to settle
 
+  if handled_sensors == 0:
+    print("no sensor yielded valid data, reset")
+    reset()
+    continue
+
+
+  # FIXXME rework
   for sensorid in sensorlist:
     if sensorlist[sensorid] == "checked":
       continue
     if sensorlist[sensorid] == "new":
-      print("New Sensor ", sysbus + sensorid + "/w1_slave found")
+      print("New Sensor", sysbus + sensorid, "found")
     if sensorlist[sensorid] == "to_check":
       print("Sensor with id", sensorid, "vanished")
       sensorlist[sensorid] = "to_delete"
@@ -388,7 +470,6 @@ while True:
   run_duration = run_finished_at - run_started_at
 
   DEBUG and print("duration of run: {:10.4f}s.".format(run_duration))
-
 
   to_wait = MEAS_INTERVAL - run_duration
   if to_wait > 0.002:

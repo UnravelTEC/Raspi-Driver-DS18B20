@@ -1,5 +1,3 @@
-"GPIO": 0
-
 sensors:
   28-3c01e0769daf:
     tags:
