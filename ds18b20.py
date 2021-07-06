@@ -79,6 +79,9 @@ parser.add_argument("-o", "--brokerhost", type=str, default=cfg['brokerhost'],
 parser.add_argument("-p", "--prometheus", dest="prometheus", action='store_true',
                         help="enable output to prometheus scrapefile")
 
+parser.add_argument("-r", "--reset", dest="reset", action='store_true',
+                        help="enable reset on start")
+
 # if using configfiles
 parser.add_argument("-c", "--configfile", type=str, default=cfg['configfile'],
                             help="load configfile ("+cfg['configfile']+")", metavar="nn")
@@ -335,8 +338,13 @@ def reset():
     eprint("no sensors appeared after reset, exit")
     exit_gracefully()
 
+if args.reset:
+  reset()
+
 sensorlist = {}
 # sensorlist = { "sensorid" : "checked|to_check", ... }
+
+error_counts = {}  # { "sensorid" : <int> }
 
 n.notify("READY=1") #optional after initializing
 n.notify("WATCHDOG=1")
@@ -352,7 +360,6 @@ while True:
 
   DEBUG and print('opening', sysbus, ":", os.listdir(sysbus))
   for sensorfolder in os.listdir(sysbus):
-    error_count = 0
     if sensorfolder.startswith(onewclass):
       DEBUG and print('opening', sysbus + sensorfolder +'/w1_slave')
       try:
@@ -376,21 +383,32 @@ while True:
                 stags = jsontags.copy()
                 stags['id'] = "1w-" + sensorfolder
                 temperature = round(float(splitcontent[1])/1000, 3)
+                error_counts[sensorfolder] = 0
                 break
             if content.endswith("YES"): # still at line 1
               DEBUG and print(sensorfolder, "OK")
               is_ok = True
 
           if temperature == -4747: # checksum NOK or other error
-            eprint("DS18B20 readout error for", sensorfolder, "content:", *lines)
-            time.sleep(1)
-            continue
+            if sensorfolder in error_counts:
+              error_counts[sensorfolder] += 1
+            else:
+              error_counts[sensorfolder] = 1
+            eprint("DS18B20 readout error for", sensorfolder, ", error count:",error_counts[sensorfolder],"content:", *lines, '.')
+            temperature = -42 # to let it ignored in next if statement
 
           if temperature == 85.0 or temperature < -55 or temperature > 125: # error condition
-            eprint("DS18B20 readout error for", sensorfolder, "t =", temperature)
-            error_count += 1
-            if error_count > 4:
-              reset()
+            if sensorfolder in error_counts:
+              error_counts[sensorfolder] += 1
+            else:
+              error_counts[sensorfolder] = 1
+            eprint("DS18B20 readout error for", sensorfolder, ", error count:", error_counts[sensorfolder], "t =", temperature, '.')
+
+          if error_counts[sensorfolder] > 4:
+            reset()
+            break
+
+          if not is_ok:
             continue
 
           handled_sensors += 1
