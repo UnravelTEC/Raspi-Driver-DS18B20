@@ -420,7 +420,35 @@ while True:
   DEBUG and print('opening', sysbus, ":", os.listdir(sysbus))
   for sensorfolder in os.listdir(sysbus):
     if sensorfolder.startswith(onewclass):
-      DEBUG and print('opening', sysbus + sensorfolder +'/w1_slave')
+      DEBUG and print('opening', sysbus + sensorfolder)
+      if not sensorfolder in error_counts:
+        error_counts[sensorfolder] = 0
+
+      if error_counts[sensorfolder] > 4:
+        print(sensorfolder, "has", error_counts[sensorfolder], "errors, reset")
+        reset()
+        for n in error_counts:
+          error_counts[n] = 0
+        break
+
+      res = 0
+      try:
+        with open(''.join([sysbus, sensorfolder, "/resolution"])) as lines:
+          is_ok = True
+          for line in lines:
+            res = int(line)
+            if res < 8:
+              print(sensorfolder,"resolution:",res, "(error)")
+              error_counts[sensorfolder] += 1
+              is_ok = False
+          if not is_ok:
+            continue
+
+      except Exception as e:
+        error_counts[sensorfolder] += 1
+        eprint('Exception in reading res, E:', e)
+        continue
+
       #try:
       if True:
         with open(''.join([sysbus, sensorfolder, "/w1_slave"])) as lines:
@@ -442,14 +470,13 @@ while True:
               if len(splitcontent) == 2:
                 stags = jsontags.copy()
                 stags['id'] = "1w-" + sensorfolder
+                stags['resolution_b'] = res
                 temperature = round(float(splitcontent[1])/1000, 3)
                 error_counts[sensorfolder] = 0
                 break
             if content.endswith("YES"): # still at line 1
               DEBUG and print(sensorfolder, "OK")
               is_ok = True
-          if not sensorfolder in error_counts:
-            error_counts[sensorfolder] = 0
 
           if temperature == -4747: # checksum NOK or other error
             error_counts[sensorfolder] += 1
@@ -485,11 +512,6 @@ while True:
               error_counts[sensorfolder] += 1
               is_ok = False
 
-          if error_counts[sensorfolder] > 4:
-            print(sensorfolder, "has", error_counts[sensorfolder], "errors, reset")
-            reset()
-            break
-
           if not is_ok:
             continue
 
@@ -519,7 +541,7 @@ while True:
             logfilehandle.write(prometh_string)
             logfilehandle.close()
       #except Exception as e:
-      #  eprint('mqtt: Exception in run, E:', e)
+      #  eprint('Exception in run, E:', e)
       #  print(''.join([sysbus, sensorfolder, " vanished, continue"]))
 
       time.sleep(0.1) # give bus/voltage supply time to settle
