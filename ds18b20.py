@@ -396,6 +396,7 @@ while True:
               error_counts[sensorfolder] = 1
             eprint("DS18B20 readout error for", sensorfolder, ", error count:",error_counts[sensorfolder],"content:", *lines, '.')
             temperature = -42 # to let it ignored in next if statement
+            is_ok = False
 
           if temperature == 85.0 or temperature < -55 or temperature > 125: # error condition
             if sensorfolder in error_counts:
@@ -403,6 +404,7 @@ while True:
             else:
               error_counts[sensorfolder] = 1
             eprint("DS18B20 readout error for", sensorfolder, ", error count:", error_counts[sensorfolder], "t =", temperature, '.')
+            is_ok = False
 
           if error_counts[sensorfolder] > 4:
             reset()
