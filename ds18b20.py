@@ -40,6 +40,9 @@ import json
 from copy import deepcopy
 import paho.mqtt.client as mqtt
 
+from collections import deque
+import math, statistics
+
 print('after imports', time.time() - starttime)
 n.notify("WATCHDOG=1")
 
@@ -346,6 +349,62 @@ sensorlist = {}
 
 error_counts = {}  # { "sensorid" : <int> }
 
+buffersize = 12 # 12 simplifies grubbs algorithm
+buffer_elements = {} # { id: deque([])}
+
+# returns True if value OK, False if it is an outlier
+# source: https://de.wikihow.com/Ausrei%C3%9Fer-nach-Grubbs-berechnen
+def grubbsDetector(lasts_deque, new_value):
+  DEBUG and print("grubbsDetector", lasts_deque, new_value)
+  nr_lasts = len(lasts_deque)
+  if nr_lasts < 2:
+    eprint("grubbsDetector: deque < 2")
+    return False # or throw Exception?
+
+  new_array = []
+  for elem in lasts_deque:
+    new_array.append(elem)
+  DEBUG and print("grubbsDetector array", new_array)
+
+  median = statistics.median(new_array)
+  sortedarray = sorted(new_array)
+  one_half = nr_lasts / 2
+  one_quarter = one_half / 2
+  three_quarters = one_half + one_quarter
+  if (one_half % 2) == 0: # even nr. of elements in lower/upper half
+    first_elem = sortedarray[one_quarter - 1]
+    second_elem = sortedarray[one_quarter]
+    lower_quartil = (first_elem + second_elem) / 2
+    first_elem = sortedarray[three_quarters - 1]
+    second_elem = sortedarray[three_quarters]
+    upper_quartil = (first_elem + second_elem) / 2
+  elif (one_half % 2) == 1:
+    lower_quartil = sortedarray[math.floor(one_quarter)]
+    upper_quartil = sortedarray[math.floor(three_quarters)]
+  else: # nr_lasts uneven (½ maybe not 100% mathematically correct)
+    first_elem = sortedarray[math.floor(one_quarter)]
+    second_elem = sortedarray[math.ceil(one_quarter)]
+    lower_quartil = (first_elem + second_elem) / 2
+    first_elem = sortedarray[math.floor(three_quarters)]
+    second_elem = sortedarray[math.ceil(three_quarters)]
+    upper_quartil = (first_elem + second_elem) / 2
+  interquart_distance = upper_quartil - lower_quartil
+  inner_fence_dist = interquart_distance*1.5
+  lower_inner_fence = lower_quartil - inner_fence_dist
+  upper_inner_fence = upper_quartil + inner_fence_dist
+  outer_fence_dist = interquart_distance*3
+  lower_outer_fence = lower_quartil - outer_fence_dist
+  upper_outer_fence = upper_quartil + outer_fence_dist
+  DEBUG and print("grubbsDetector for:",new_value,"; elements:", new_array)
+  DEBUG and print("nr_lasts:",nr_lasts,"; median:",median,"; lower_inner_fence:",lower_inner_fence,"; upper_inner_fence:",upper_inner_fence,"; lower_outer_fence:",lower_outer_fence,"; upper_outer_fence")
+
+  if new_value < lower_outer_fence or new_value > upper_outer_fence:
+    DEBUG and print("grubbsDetector: MAJOR outlier!")
+    return False
+  DEBUG and print("grubbsDetector: OK")
+  return True
+
+
 n.notify("READY=1") #optional after initializing
 n.notify("WATCHDOG=1")
 print('starting loop', time.time() - starttime)
@@ -362,7 +421,8 @@ while True:
   for sensorfolder in os.listdir(sysbus):
     if sensorfolder.startswith(onewclass):
       DEBUG and print('opening', sysbus + sensorfolder +'/w1_slave')
-      try:
+      #try:
+      if True:
         with open(''.join([sysbus, sensorfolder, "/w1_slave"])) as lines:
           DEBUG and print('opened', sysbus + sensorfolder +'/w1_slave')
 
@@ -388,25 +448,45 @@ while True:
             if content.endswith("YES"): # still at line 1
               DEBUG and print(sensorfolder, "OK")
               is_ok = True
+          if not sensorfolder in error_counts:
+            error_counts[sensorfolder] = 0
 
           if temperature == -4747: # checksum NOK or other error
-            if sensorfolder in error_counts:
-              error_counts[sensorfolder] += 1
-            else:
-              error_counts[sensorfolder] = 1
+            error_counts[sensorfolder] += 1
             eprint("DS18B20 readout error for", sensorfolder, ", error count:",error_counts[sensorfolder],"content:", *lines, '.')
             temperature = -42 # to let it ignored in next if statement
             is_ok = False
 
           if temperature == 85.0 or temperature < -55 or temperature > 125: # error condition
-            if sensorfolder in error_counts:
-              error_counts[sensorfolder] += 1
-            else:
-              error_counts[sensorfolder] = 1
+            error_counts[sensorfolder] += 1
             eprint("DS18B20 readout error for", sensorfolder, ", error count:", error_counts[sensorfolder], "t =", temperature, '.')
             is_ok = False
 
+          if not sensorfolder in buffer_elements:
+            buffer_elements[sensorfolder] = deque([])
+
+          while True:
+            if len(buffer_elements[sensorfolder]) > buffersize:
+              buffer_elements[sensorfolder].popleft()
+            else:
+              break
+
+          if len(buffer_elements[sensorfolder]) < 2:
+            if temperature == 0.0:
+              eprint("DS18B20 readout error for", sensorfolder, ", error count:", error_counts[sensorfolder], "t =", temperature, '.')
+              error_counts[sensorfolder] += 1
+              is_ok = False
+            if is_ok:
+              buffer_elements[sensorfolder].append(temperature)
+          else:
+            if grubbsDetector(buffer_elements[sensorfolder], temperature):
+              buffer_elements[sensorfolder].append(temperature)
+            else:
+              error_counts[sensorfolder] += 1
+              is_ok = False
+
           if error_counts[sensorfolder] > 4:
+            print(sensorfolder, "has", error_counts[sensorfolder], "errors, reset")
             reset()
             break
 
@@ -438,8 +518,9 @@ while True:
             prometh_string = 'temperature_degC{sensor="DS18B20",id="1w-' + sensorfolder + '"} ' + str(temperature) + '\n'
             logfilehandle.write(prometh_string)
             logfilehandle.close()
-      except Exception as e:
-        print(''.join([sysbus, sensorfolder, " vanished, continue"]))
+      #except Exception as e:
+      #  eprint('mqtt: Exception in run, E:', e)
+      #  print(''.join([sysbus, sensorfolder, " vanished, continue"]))
 
       time.sleep(0.1) # give bus/voltage supply time to settle
 
