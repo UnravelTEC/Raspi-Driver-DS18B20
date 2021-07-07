@@ -60,6 +60,7 @@ name = "DS18B20" # Uppercase
 cfg = {
   "interval": 1,
   "gpio": -1,
+  "power": 6,
   "brokerhost": "localhost",
   "prometheus": False,
   "configfile": "/etc/lcars/" + name.lower() + ".yml"
@@ -74,6 +75,8 @@ parser.add_argument("-D", "--debug", action='store_true', #cmdline arg only, not
 # for sensors/actuators on GPIOs
 parser.add_argument("-g", "--gpio", type=int, default=cfg['gpio'],
                             help="use gpio number {"+str(cfg['gpio'])+"} (BCM) for 1-w line (used for reset)", metavar="ii")
+parser.add_argument("-P", "--power", type=int, default=cfg['power'],
+                            help="use gpio number {"+str(cfg['power'])+"} (BCM) for powering (used by reset)", metavar="ii")
 
 # if using MQTT
 parser.add_argument("-o", "--brokerhost", type=str, default=cfg['brokerhost'],
@@ -161,6 +164,9 @@ if "gpio" in cfg:
   IO.setmode (IO.BCM)
   IO.setwarnings(False)
 
+if "power" in cfg:
+  print("using gpio", cfg['power'], "for VCC")
+
 SENSOR_NAME = name.lower()
 
 hostname = os.uname()[1]
@@ -215,6 +221,8 @@ def mqttPub(topic, payload, retain = True):
     (DEBUG or first_run) and print(topic, payload, "retain =", retain)
     ret = client.publish(topic, payload, retain=retain)
     if ret[0] == MQTT_ERR_SUCCESS:
+      if(str(type(n)) != "<class 'sdnotify.SystemdNotifier'>"):
+        print("typeof n", type(n), n)
       n.notify("WATCHDOG=1")
     elif ret[0] == MQTT_ERR_NO_CONN:
       eprint('no mqtt connnection')
@@ -222,7 +230,7 @@ def mqttPub(topic, payload, retain = True):
     else:
       eprint('mqtt publishing not successful,', ret)
   except Exception as e:
-    eprint('Exception in client.publish', e, topic, payload_json)
+    eprint('Exception in client.publish', e, topic, payload)
 
 def mqttJsonPub(topic, payload_json, retain=True):
   mqttPub(topic, json.dumps(payload_json, separators=(',', ':'), sort_keys=True), retain)
@@ -300,26 +308,34 @@ def reset():
     if sensorfolder.startswith(onewclass):
       eprint("error,", sensorfolder, "still here")
 
-  print("forcing w1-line down")
+  print("forcing VCC and w1-line down")
   IO.setup(cfg['gpio'], IO.OUT)
+  IO.setup(cfg['power'], IO.OUT)
   IO.output(cfg['gpio'], False)
+  IO.output(cfg['power'], False)
   time.sleep(0.5)
-  IO.output(cfg['gpio'], True)
+  time.sleep(2.5)
+  print("powering up again, release data line to kernel")
+  IO.output(cfg['power'], True)
+  IO.setup(cfg['gpio'], IO.IN, IO.PUD_OFF)
   time.sleep(1)
+  time.sleep(2)
   print("starting search")
   with open(searchfile,'w+') as lines:
     lines.write("1")
 
   print("search in progress - ", end='')
-  for i in range(12):
-    print(12-i, end=' ')
+  search_duration = 5
+  for i in range(search_duration):
+    print(search_duration-i, end=' ')
+    sys.stdout.flush()
     time.sleep(1)
-  print('\nwaiting for sensor ', end='')
 
   found_sensors = []
   for sensorfolder in os.listdir(sysbus):
     if sensorfolder.startswith(onewclass):
       found_sensors.append(sensorfolder)
+  print("found:", found_sensors)
 
   if customsensors:
     extra_sensors = []
@@ -354,15 +370,22 @@ buffer_elements = {} # { id: deque([])}
 
 # returns True if value OK, False if it is an outlier
 # source: https://de.wikihow.com/Ausrei%C3%9Fer-nach-Grubbs-berechnen
+max_fixed_deviation = 1.0 # Kelvin deviation always allowed - to catch lasts_deque with minimal median deviations
 def grubbsDetector(lasts_deque, new_value):
   DEBUG and print("grubbsDetector", lasts_deque, new_value)
   nr_lasts = len(lasts_deque)
   if nr_lasts < 2:
     eprint("grubbsDetector: deque < 2")
-    return False # or throw Exception?
+    return True # or throw Exception?
+
+  # these 3 lines make the algorithm below practically never needed...
+  last_V = lasts_deque[-1]
+  if new_value < last_V + max_fixed_deviation and new_value > last_V - max_fixed_deviation:
+    DEBUG and print(new_value, "inside", last_V - max_fixed_deviation, "and", last_V + max_fixed_deviation)
+    return True
 
   new_array = []
-  for elem in lasts_deque:
+  for elem in lasts_deque: 
     new_array.append(elem)
   DEBUG and print("grubbsDetector array", new_array)
 
@@ -372,11 +395,15 @@ def grubbsDetector(lasts_deque, new_value):
   one_quarter = one_half / 2
   three_quarters = one_half + one_quarter
   if (one_half % 2) == 0: # even nr. of elements in lower/upper half
-    first_elem = sortedarray[one_quarter - 1]
-    second_elem = sortedarray[one_quarter]
+    if one_quarter != int(one_quarter):
+      print(one_quarter)
+    i1q = int(one_quarter)
+    first_elem = sortedarray[i1q - 1]
+    second_elem = sortedarray[i1q]
     lower_quartil = (first_elem + second_elem) / 2
-    first_elem = sortedarray[three_quarters - 1]
-    second_elem = sortedarray[three_quarters]
+    i3q = int(three_quarters)
+    first_elem = sortedarray[i3q - 1]
+    second_elem = sortedarray[i3q]
     upper_quartil = (first_elem + second_elem) / 2
   elif (one_half % 2) == 1:
     lower_quartil = sortedarray[math.floor(one_quarter)]
@@ -438,19 +465,20 @@ while True:
           for line in lines:
             res = int(line)
             if res < 8:
-              print(sensorfolder,"resolution:",res, "(error)")
+              eprint(sensorfolder,"resolution:",res, "(error)")
               error_counts[sensorfolder] += 1
               is_ok = False
-          if not is_ok:
-            continue
-
+              time.sleep(0.8)
       except Exception as e:
         error_counts[sensorfolder] += 1
         eprint('Exception in reading res, E:', e)
         continue
+      if not is_ok:
+        continue
 
       #try:
       if True:
+        sampling_start = time.time()
         with open(''.join([sysbus, sensorfolder, "/w1_slave"])) as lines:
           DEBUG and print('opened', sysbus + sensorfolder +'/w1_slave')
 
@@ -472,9 +500,12 @@ while True:
                 stags['id'] = "1w-" + sensorfolder
                 stags['resolution_b'] = res
                 temperature = round(float(splitcontent[1])/1000, 3)
+                if error_counts[sensorfolder] > 0:
+                  print(sensorfolder, "OK again, resetting error counter", error_counts[sensorfolder], "to 0")
                 error_counts[sensorfolder] = 0
                 break
             if content.endswith("YES"): # still at line 1
+              #              if 00 00 00 00 00 00 00 00 00 # sicher error!
               DEBUG and print(sensorfolder, "OK")
               is_ok = True
 
@@ -484,7 +515,7 @@ while True:
             temperature = -42 # to let it ignored in next if statement
             is_ok = False
 
-          if temperature == 85.0 or temperature < -55 or temperature > 125: # error condition
+          if temperature < -55 or temperature > 125: # error condition
             error_counts[sensorfolder] += 1
             eprint("DS18B20 readout error for", sensorfolder, ", error count:", error_counts[sensorfolder], "t =", temperature, '.')
             is_ok = False
@@ -499,7 +530,7 @@ while True:
               break
 
           if len(buffer_elements[sensorfolder]) < 2:
-            if temperature == 0.0:
+            if temperature == 0.0: # or temperature == 85.0:
               eprint("DS18B20 readout error for", sensorfolder, ", error count:", error_counts[sensorfolder], "t =", temperature, '.')
               error_counts[sensorfolder] += 1
               is_ok = False
@@ -509,6 +540,7 @@ while True:
             if grubbsDetector(buffer_elements[sensorfolder], temperature):
               buffer_elements[sensorfolder].append(temperature)
             else:
+              eprint("DS18B20: Grubbs-Detector discarded t =", temperature, "of", sensorfolder, ", error count:", error_counts[sensorfolder], ', last:', buffer_elements[sensorfolder])
               error_counts[sensorfolder] += 1
               is_ok = False
 
@@ -532,7 +564,7 @@ while True:
             "values": {
               datafield: temperature
               },
-            "UTS": round(run_started_at, 3)
+            "UTS": round(sampling_start, 3)
             }
           mqttJsonPub(topic_json, payload)
           if(cfg['prometheus']):
@@ -562,8 +594,8 @@ while True:
       print("Sensor with id", sensorid, "vanished")
       sensorlist[sensorid] = "to_delete"
 
-  delete = [key for key in sensorlist if sensorlist[key] == "to_delete"]
-  for key in delete: del sensorlist[key]
+  to_delete = [key for key in sensorlist if sensorlist[key] == "to_delete"]
+  for key in to_delete: del sensorlist[key]
 
   if not customsensors: ## FIXME
     broken = False
