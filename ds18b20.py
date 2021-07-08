@@ -309,15 +309,15 @@ def reset():
       eprint("error,", sensorfolder, "still here")
 
   print("forcing VCC and w1-line down")
-  IO.setup(cfg['gpio'], IO.OUT)
+  # IO.setup(cfg['gpio'], IO.OUT)
   IO.setup(cfg['power'], IO.OUT)
-  IO.output(cfg['gpio'], False)
+  # IO.output(cfg['gpio'], False)
   IO.output(cfg['power'], False)
   time.sleep(0.5)
   time.sleep(2.5)
   print("powering up again, release data line to kernel")
+  # IO.setup(cfg['gpio'], IO.IN, IO.PUD_OFF)
   IO.output(cfg['power'], True)
-  IO.setup(cfg['gpio'], IO.IN, IO.PUD_OFF)
   time.sleep(1)
   time.sleep(2)
   print("starting search")
@@ -594,8 +594,8 @@ while True:
       print("Sensor with id", sensorid, "vanished")
       sensorlist[sensorid] = "to_delete"
 
-  to_delete = [key for key in sensorlist if sensorlist[key] == "to_delete"]
-  for key in to_delete: del sensorlist[key]
+  # to_delete = [key for key in sensorlist if sensorlist[key] == "to_delete"]
+  # for key in to_delete: del sensorlist[key]
 
   if not customsensors: ## FIXME
     broken = False
