@@ -554,9 +554,10 @@ while True:
     time.sleep(0.1) # give bus/voltage supply time to settle
 
   if handled_sensors == 0:
-    print("no sensor yielded valid data, exit 4 reset")
+    print("no sensor there, exit 4 reset")
     exit_gracefully()
 
+  # TODO do something if a sensor in cfg is not there at the beginning
 
   # FIXXME rework
 #  for sensorid in sensorlist:
