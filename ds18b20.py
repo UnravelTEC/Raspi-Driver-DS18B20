@@ -309,14 +309,14 @@ def reset():
       eprint("error,", sensorfolder, "still here")
 
   print("forcing VCC and w1-line down")
-  # IO.setup(cfg['gpio'], IO.OUT)
+  IO.setup(cfg['gpio'], IO.OUT)
   IO.setup(cfg['power'], IO.OUT)
-  # IO.output(cfg['gpio'], False)
+  IO.output(cfg['gpio'], False)
   IO.output(cfg['power'], False)
   time.sleep(0.5)
   time.sleep(2.5)
   print("powering up again, release data line to kernel")
-  # IO.setup(cfg['gpio'], IO.IN, IO.PUD_OFF)
+  IO.setup(cfg['gpio'], IO.IN, IO.PUD_OFF)
   IO.output(cfg['power'], True)
   time.sleep(1)
   time.sleep(2)
@@ -357,8 +357,8 @@ def reset():
     eprint("no sensors appeared after reset, exit")
     exit_gracefully()
 
-if args.reset:
-  reset()
+#if args.reset:
+reset()
 
 sensorlist = {}
 # sensorlist = { "sensorid" : "checked|to_check", ... }
@@ -426,7 +426,9 @@ def grubbsDetector(lasts_deque, new_value):
   DEBUG and print("nr_lasts:",nr_lasts,"; median:",median,"; lower_inner_fence:",lower_inner_fence,"; upper_inner_fence:",upper_inner_fence,"; lower_outer_fence:",lower_outer_fence,"; upper_outer_fence")
 
   if new_value < lower_outer_fence or new_value > upper_outer_fence:
-    DEBUG and print("grubbsDetector: MAJOR outlier!")
+    print("grubbsDetector: MAJOR outlier!")
+    print("grubbsDetector for:",new_value,"; elements:", new_array)
+    print("nr_lasts:",nr_lasts,"; median:",median,"; lower_inner_fence:",lower_inner_fence,"; upper_inner_fence:",upper_inner_fence,"; lower_outer_fence:",lower_outer_fence,"; upper_outer_fence")
     return False
   DEBUG and print("grubbsDetector: OK")
   return True
@@ -438,161 +440,133 @@ print('starting loop', time.time() - starttime)
 while True:
   run_started_at = time.time()
 
-  handled_sensors = 0
-
-  foundsensor = False
   for sensorid in sensorlist:
     sensorlist[sensorid] = "to_check"
 
   DEBUG and print('opening', sysbus, ":", os.listdir(sysbus))
+  handled_sensors = 0
   for sensorfolder in os.listdir(sysbus):
-    if sensorfolder.startswith(onewclass):
-      DEBUG and print('opening', sysbus + sensorfolder)
-      if not sensorfolder in error_counts:
-        error_counts[sensorfolder] = 0
+    if not sensorfolder.startswith(onewclass): continue
+    DEBUG and print('opening', sysbus + sensorfolder)
+    handled_sensors += 1
+    if not sensorfolder in error_counts:
+      print("Sensor", sysbus + sensorfolder, "found")
+      error_counts[sensorfolder] = 0
+      buffer_elements[sensorfolder] = deque([])
 
-      if error_counts[sensorfolder] > 4:
-        print(sensorfolder, "has", error_counts[sensorfolder], "errors, reset")
-        reset()
-        for n in error_counts:
-          error_counts[n] = 0
-        break
+    if error_counts[sensorfolder] > 4:
+      print(sensorfolder, "has", error_counts[sensorfolder], "errors, exit 4 reset")
+      exit_gracefully()
 
-      res = 0
-      try:
-        with open(''.join([sysbus, sensorfolder, "/resolution"])) as lines:
-          is_ok = True
-          for line in lines:
-            res = int(line)
-            if res < 8:
-              eprint(sensorfolder,"resolution:",res, "(error)")
-              error_counts[sensorfolder] += 1
-              is_ok = False
-              time.sleep(0.8)
-      except Exception as e:
-        error_counts[sensorfolder] += 1
-        eprint('Exception in reading res, E:', e)
+    if len(buffer_elements[sensorfolder]) > buffersize:
+      buffer_elements[sensorfolder].popleft()
+
+    error_counts[sensorfolder] += 1 # will only be set to 0 on success
+    res = 0
+    try:
+      with open(''.join([sysbus, sensorfolder, "/resolution"])) as lines:
+        for line in lines:
+          res = int(line)
+    except Exception as e:
+      eprint('Exception in reading res, E:', e)
+    if res < 8:
+      eprint(sensorfolder,"resolution:",res, "(error)")
+      time.sleep(0.8)
+      continue
+
+    sampling_start = time.time()
+    with open(''.join([sysbus, sensorfolder, "/w1_slave"])) as lines:
+      DEBUG and print('opened', sysbus + sensorfolder +'/w1_slave')
+
+      if sensorfolder in sensorlist:
+        sensorlist[sensorfolder] = "checked"
+      else:
+        sensorlist[sensorfolder] = "new"
+
+      temperature = -47000000 # bigger than 12bit can generate
+      for line in lines:
+        content = line.strip()
+        if content.endswith("YES"): # still at line 1
+          if content.startswith("00 00 00 00 00 00 00 00 00"):
+            temperature = -42000000
+            break
+          continue
+
+        # line 2
+        splitcontent = content.split("=")
+        if len(splitcontent) == 2:
+          temperature = round(float(splitcontent[1])/1000, 3)
+
+      if temperature < -41000000: # checksum NOK or other error
+        eprint("DS18B20 readout error for", sensorfolder, ", error count:",error_counts[sensorfolder],"content:", *lines, '.')
         continue
-      if not is_ok:
+
+      if temperature < -55 or temperature > 125: # clearly out of range
+        eprint("DS18B20 readout error for", sensorfolder, ", error count:", error_counts[sensorfolder], "t =", temperature, '.')
         continue
 
-      #try:
-      if True:
-        sampling_start = time.time()
-        with open(''.join([sysbus, sensorfolder, "/w1_slave"])) as lines:
-          DEBUG and print('opened', sysbus + sensorfolder +'/w1_slave')
+      if len(buffer_elements[sensorfolder]) < 2:
+        if temperature == 85.0:
+          print("DS18B20 reset for", sensorfolder, "successful")
+          error_counts[sensorfolder] = 0
+          continue
+        if temperature == 0.0:
+          eprint("DS18B20 readout error for", sensorfolder, ", error count:", error_counts[sensorfolder], "t=0")
+          continue
+        buffer_elements[sensorfolder].append(temperature)
+      else:
+        if grubbsDetector(buffer_elements[sensorfolder], temperature):
+          buffer_elements[sensorfolder].append(temperature)
+        else:
+          eprint("DS18B20: Grubbs-Detector discarded t =", temperature, "of", sensorfolder, ", error count:", error_counts[sensorfolder], ', last:', buffer_elements[sensorfolder])
+          continue
 
-          foundsensor = True
-          if sensorfolder in sensorlist:
-            sensorlist[sensorfolder] = "checked"
-          else:
-            sensorlist[sensorfolder] = "new"
+      if error_counts[sensorfolder] > 1:
+        print(sensorfolder, "OK again, resetting error counter", error_counts[sensorfolder] - 1, "to 0")
+      error_counts[sensorfolder] = 0
 
-          is_ok = False
-          temperature = -4747
-          for line in lines:
-            content = line.strip()
-            if is_ok: # reached line2 successful
-              # line 2
-              splitcontent = content.split("=")
-              if len(splitcontent) == 2:
-                stags = jsontags.copy()
-                stags['id'] = "1w-" + sensorfolder
-                stags['resolution_b'] = res
-                temperature = round(float(splitcontent[1])/1000, 3)
-                if error_counts[sensorfolder] > 0:
-                  print(sensorfolder, "OK again, resetting error counter", error_counts[sensorfolder], "to 0")
-                error_counts[sensorfolder] = 0
-                break
-            if content.endswith("YES"): # still at line 1
-              #              if 00 00 00 00 00 00 00 00 00 # sicher error!
-              DEBUG and print(sensorfolder, "OK")
-              is_ok = True
+      stags = jsontags.copy()
+      stags['id'] = "1w-" + sensorfolder
+      stags['resolution_b'] = res
+      datafield = "air_degC"
+      if customsensors and sensorfolder in customsensors:
+        csenscfg = customsensors[sensorfolder]
+        if "tags" in csenscfg:
+          for key in csenscfg["tags"]:
+            stags[key] = csenscfg["tags"][key]
+        if "fieldname" in csenscfg:
+          datafield = csenscfg["fieldname"]
 
-          if temperature == -4747: # checksum NOK or other error
-            error_counts[sensorfolder] += 1
-            eprint("DS18B20 readout error for", sensorfolder, ", error count:",error_counts[sensorfolder],"content:", *lines, '.')
-            temperature = -42 # to let it ignored in next if statement
-            is_ok = False
+      payload = {
+        "tags": stags,
+        "values": {
+          datafield: temperature
+          },
+        "UTS": round(sampling_start, 3)
+        }
+      mqttJsonPub(topic_json, payload)
+      if(cfg['prometheus']):
+        logfilehandle = open(LOGFILE, "w",1)
+        prometh_string = 'temperature_degC{sensor="DS18B20",id="1w-' + sensorfolder + '"} ' + str(temperature) + '\n'
+        logfilehandle.write(prometh_string)
+        logfilehandle.close()
 
-          if temperature < -55 or temperature > 125: # error condition
-            error_counts[sensorfolder] += 1
-            eprint("DS18B20 readout error for", sensorfolder, ", error count:", error_counts[sensorfolder], "t =", temperature, '.')
-            is_ok = False
-
-          if not sensorfolder in buffer_elements:
-            buffer_elements[sensorfolder] = deque([])
-
-          while True:
-            if len(buffer_elements[sensorfolder]) > buffersize:
-              buffer_elements[sensorfolder].popleft()
-            else:
-              break
-
-          if len(buffer_elements[sensorfolder]) < 2:
-            if temperature == 0.0: # or temperature == 85.0:
-              eprint("DS18B20 readout error for", sensorfolder, ", error count:", error_counts[sensorfolder], "t =", temperature, '.')
-              error_counts[sensorfolder] += 1
-              is_ok = False
-            if is_ok:
-              buffer_elements[sensorfolder].append(temperature)
-          else:
-            if grubbsDetector(buffer_elements[sensorfolder], temperature):
-              buffer_elements[sensorfolder].append(temperature)
-            else:
-              eprint("DS18B20: Grubbs-Detector discarded t =", temperature, "of", sensorfolder, ", error count:", error_counts[sensorfolder], ', last:', buffer_elements[sensorfolder])
-              error_counts[sensorfolder] += 1
-              is_ok = False
-
-          if not is_ok:
-            continue
-
-          handled_sensors += 1
-
-          # print(temperature)
-          datafield = "air_degC"
-          if customsensors and sensorfolder in customsensors:
-            csenscfg = customsensors[sensorfolder]
-            if "tags" in csenscfg:
-              for key in csenscfg["tags"]:
-                stags[key] = csenscfg["tags"][key]
-            if "fieldname" in csenscfg:
-              datafield = csenscfg["fieldname"]
-
-          payload = {
-            "tags": stags,
-            "values": {
-              datafield: temperature
-              },
-            "UTS": round(sampling_start, 3)
-            }
-          mqttJsonPub(topic_json, payload)
-          if(cfg['prometheus']):
-            logfilehandle = open(LOGFILE, "w",1)
-            prometh_string = 'temperature_degC{sensor="DS18B20",id="1w-' + sensorfolder + '"} ' + str(temperature) + '\n'
-            logfilehandle.write(prometh_string)
-            logfilehandle.close()
-      #except Exception as e:
-      #  eprint('Exception in run, E:', e)
-      #  print(''.join([sysbus, sensorfolder, " vanished, continue"]))
-
-      time.sleep(0.1) # give bus/voltage supply time to settle
+    time.sleep(0.1) # give bus/voltage supply time to settle
 
   if handled_sensors == 0:
-    print("no sensor yielded valid data, reset")
-    reset()
-    continue
+    print("no sensor yielded valid data, exit 4 reset")
+    exit_gracefully()
 
 
   # FIXXME rework
-  for sensorid in sensorlist:
-    if sensorlist[sensorid] == "checked":
-      continue
-    if sensorlist[sensorid] == "new":
-      print("New Sensor", sysbus + sensorid, "found")
-    if sensorlist[sensorid] == "to_check":
-      print("Sensor with id", sensorid, "vanished")
-      sensorlist[sensorid] = "to_delete"
+#  for sensorid in sensorlist:
+#    if sensorlist[sensorid] == "checked":
+#      continue
+#    if sensorlist[sensorid] == "new":
+#      print("New Sensor", sysbus + sensorid, "found")
+#    if sensorlist[sensorid] == "to_check":
+#      print("Sensor with id", sensorid, "vanished")
+#      sensorlist[sensorid] = "to_delete"
 
   # to_delete = [key for key in sensorlist if sensorlist[key] == "to_delete"]
   # for key in to_delete: del sensorlist[key]
@@ -607,17 +581,6 @@ while True:
         break
     if broken:
       continue
-
-
-  # if not foundsensor:
-  #   if first_run:
-  #     eprint('no DS18B20 sensors found on initial start', sysbus, ":", os.listdir(sysbus))
-  # else:
-  #     eprint('all DS18B20 sensors vanished', sysbus, ":", os.listdir(sysbus))
-  #  eprint("try reset")
-    # reset()
-    # exit_gracefully()
-
 
   first_run = False
 
