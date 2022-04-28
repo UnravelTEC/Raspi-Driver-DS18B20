@@ -272,6 +272,11 @@ while True:
       DEBUG and print('opening', sysbus + sensorfolder +'/w1_slave')
       with open(''.join([sysbus, sensorfolder, "/w1_slave"])) as lines:
         foundsensor = True
+        if first_run:
+          rfilehandle = open(''.join([sysbus, sensorfolder, "/resolution"]), "w",1)
+          rfilehandle.write("12")
+          rfilehandle.close()
+
         DEBUG and print('opened', sysbus + sensorfolder +'/w1_slave')
         is_ok = False
         for line in lines:
