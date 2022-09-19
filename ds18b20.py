@@ -60,7 +60,7 @@ name = "DS18B20" # Uppercase
 cfg = {
   "interval": 1,
   "gpio": -1,
-  "power": 6,
+  "power": -1,
   "brokerhost": "localhost",
   "prometheus": False,
   "configfile": "/etc/lcars/" + name.lower() + ".yml"
@@ -137,14 +137,33 @@ print('after cfg', time.time() - starttime)
 n.notify("WATCHDOG=1")
 
 gpioline = ""
+powerline = ""
 with open("/boot/config.txt") as lines:
   for line in lines:
     if line.startswith("dtoverlay=w1-gpio"):
       gpioline = line
-      break
+    if line.startswith("gpio="):
+      if "#" in line:
+        nocommline = line.split("#",1)[0].strip()
+      else:
+        nocommline = line
+      if nocommline.endswith("=op,dh"):
+        powerline = nocommline
+      else:
+        print(powerline)
+
 
 if not gpioline:
   eprint("w1 not found in /boot/config.txt, is it enabled?")
+
+if cfg["power"] == -1 and powerline:
+  splitsequal = powerline.split("=")
+  if len(splitsequal) == 3:
+    cfg["power"] = int(splitsequal[1])
+    print("using gpio", cfg["power"], "for power")
+  else:
+    eprint("error reading power line in cfg.txt (", powerline, ")")
+
 
 if "gpio" in cfg and cfg['gpio'] == -1 :
   splitscomma = gpioline.split(",",1)
@@ -174,7 +193,7 @@ hostname = os.uname()[1]
 brokerhost = cfg['brokerhost']
 
 customsensors = None
-if cfg['sensors']:
+if 'sensors' in cfg:
   customsensors = cfg['sensors']
 
 def mqttConnect():
