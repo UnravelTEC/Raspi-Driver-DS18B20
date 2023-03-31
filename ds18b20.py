@@ -200,7 +200,6 @@ def mqttJsonPub(topic, payload_json, retain=True):
 client = mqtt.Client(client_id=name, clean_session=True) # client id only useful if subscribing, but nice in logs # clean_session if you don't want to collect messages if daemon stops
 client.on_connect = onConnect
 mqttConnect()
-client.loop_start()
 
 topic_json = hostname + '/sensors/' + SENSOR_NAME.upper() + '/temperature'
 
