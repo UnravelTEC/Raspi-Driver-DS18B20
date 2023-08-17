@@ -192,10 +192,10 @@ def mqttPub(topic, payload, retain = True):
     else:
       eprint('mqtt publishing not successful,', ret)
   except Exception as e:
-    eprint('Exception in client.publish', e, topic, payload_json)
+    eprint('Exception in client.publish', e, topic, payload)
 
 def mqttJsonPub(topic, payload_json, retain=True):
-  mqttPub(topic, json.dumps(payload_json, separators=(',', ':'), sort_keys=True), retain)
+  mqttPub(topic, json.dumps(payload_json, separators=(',', ':')), retain)
 
 client = mqtt.Client(client_id=name, clean_session=True) # client id only useful if subscribing, but nice in logs # clean_session if you don't want to collect messages if daemon stops
 client.on_connect = onConnect
